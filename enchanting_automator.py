@@ -4,6 +4,9 @@ import time
 import win32api, win32con
 from PIL import ImageGrab
 
+##TODO Need to fix spider shover timing a little
+##TODO Need to make sure to get lapis/book out of table before leaving
+
 #===============[Constants]===============#
 
 #List of Virtual Key Codes, and their corresponding ascii characters
@@ -11,7 +14,7 @@ keys = {0: [0x30], 1:[0x31], 2:[0x32], 3:[0x33], 4:[0x34], 5:[0x35], 6:[0x36], 7
         "a":[0x41], "b":[0x41], "c":[0x43], "d":[0x44], "e":[0x45], "f":[0x46], "g":[0x47], "h":[0x48], "i":[0x49],
          "j":[0x4A], "k":[0x4B], "l":[0x4C], "m":[0x4D], "n":[0x4E], "o":[0x4F], "p":[0x50], "q":[0x51], "r":[0x52],
          "s":[0x53], "t":[0x54], "u":[0x55], "v":[0x56], "w":[0x57], "x":[0x58], "y":[0x59], "z":[0x5A],  "/":[0x6F],
-        " ":[0x20], "ENTER":[0x0D], "_":[0xA0, 0xBD]}
+        " ":[0x20], "ENTER":[0x0D], "_":[0xA0, 0xBD], "SHIFT":[0xA0], "ESCAPE":[0x1B]}
 
 #===============[Support Code]===============#
 SendInput = ctypes.windll.user32.SendInput
@@ -130,6 +133,10 @@ def leftClick(pos):
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN,pos[0],pos[1],0,0)
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP,pos[0],pos[1],0,0)
 
+def leftClick_(pos):
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN,pos[0],pos[1],0,0)
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP,pos[0],pos[1],0,0)
+
 """
 Right click at pos
 
@@ -207,7 +214,12 @@ def screenLike(img, comp):
         return True
     else:
         return False
-        
+
+def countdown(t):
+    for x in range(t):
+        if x % 5 == 0:
+            print("Time: "+str(x)+"s")
+        time.sleep(1)
     
 
 #===============[Automation]===============#
@@ -216,13 +228,20 @@ class Constants:
     CENTER_SCREEN = (int(SCREEN_RESOLUTION[0]/2),int(SCREEN_RESOLUTION[1]/2))
     COMPARE_THRESHOLD = 10
 
+    BOOK_SLOT       = (820, 510)
+    LAPIS_SLOT      = (780, 510)
+    ENC_BOOK_SLOT   = (550, 320)
+    ENC_LAPIS_SLOT  = (590, 320)
+    LVL_30_SLOT     = (720, 330)
+
     HOME_PREFIX     = "auto_"
     QUAD_SPAWNER    = HOME_PREFIX + "quad_spawn"
     LIGHT_SWITCH    = HOME_PREFIX + "light"
     SPIDER_SHOVE    = HOME_PREFIX + "spider_shove"
-    KILLING_AREA    = HOME_PREFIX + "spider_shove"
+    KILLING_AREA    = HOME_PREFIX + "kill"
     ENCHANTING_AREA = HOME_PREFIX + "enchant"
     ITEM_DROPOFF    = HOME_PREFIX + "dropoff"
+    RECEIVE_XP      = HOME_PREFIX + "recv_xp"
     
     
 
@@ -243,9 +262,15 @@ class Grind:
         self.lightStatus = True
         self.spiderShove = False
 
+        self.currentSlot = 7
+
     def teleport(self, home):
         typeCommand("/home "+home)
         self.currentPos = home
+
+    def setSlot(self, slot):
+        typeKey(keys[slot][0])
+        self.currentSlot = slot
 
     """
     Based upon the starting conditions, sets the spawner light on or off
@@ -285,17 +310,105 @@ class Grind:
         #time.sleep(0.7)
         #self.teleport(origPos)
 
+    def enchantBook(self):
+        origPos = self.currentPos
+        self.teleport(Constants.ENCHANTING_AREA)
+        time.sleep(0.7)
+        rightClick(Constants.CENTER_SCREEN)
+        time.sleep(0.7)
+
+
+        pressKey(keys["SHIFT"][0])
+
+        leftClick(Constants.BOOK_SLOT)
+        time.sleep(0.3)
+        leftClick(Constants.LAPIS_SLOT)
+        time.sleep(0.3)
+        leftClick(Constants.LVL_30_SLOT)
+        time.sleep(0.3)
+        leftClick(Constants.ENC_LAPIS_SLOT)
+        time.sleep(0.3)
+        leftClick(Constants.ENC_BOOK_SLOT)
+        time.sleep(0.3)
+
+        releaseKey(keys["SHIFT"][0])
+        time.sleep(0.3)
+        
+        typeKeys(keys["ESCAPE"])
+        time.sleep(0.7)
+
+        self.teleport(origPos)
+
+    def spamClick(self, t):
+        for x in range(int(t/0.1)):
+            leftClick_(Constants.CENTER_SCREEN)
+            time.sleep(0.1)
+
+    def killSpiders(self):
+        origPos = self.currentPos        
+        self.teleport(Constants.KILLING_AREA)
+
+        time.sleep(0.7)
+        self.setSpiderShove(True)
+        time.sleep(0.7)
+        
+        pressKey(keys["w"][0])
+        for x in range(5):
+            pressKey(keys["a"][0])
+            self.spamClick(4.5)
+            releaseKey(keys["a"][0])
+            pressKey(keys["d"][0])
+            self.spamClick(4.5)
+            releaseKey(keys["d"][0])
+        releaseKey(keys["w"][0])
+
+        time.sleep(0.7)
+        self.setSpiderShove(False)
+        time.sleep(2)
+        
+        self.teleport(origPos)
             
     """
     Simple function for executing test commands
     """
     def do(self):
-        print("Starting loop in 3...")
+        print("Starting grinding in 3...")        
         time.sleep(3)
 
-        self.openEnchantingTable()
+        self.teleport(Constants.QUAD_SPAWNER)
+        time.sleep(5)
 
+        self.setLight(False)
+
+        self.running = True
+        self.loop()        
+
+    def loop(self):
+        wCnt = 0
+        while self.running:
+            countdown(140)
+            self.killSpiders()
+            time.sleep(1)
+            self.enchantBook()
+            time.sleep(1)
+
+            #New weapon counter
+            wCnt += 1
+            if wCnt == 3:
+                print("Needs new weapon")
+                if self.currentSlot == 1:
+                    print("Out of weapons! Stopping.")
+                    self.running = False
+                    break
+                else:
+                    self.setSlot(self.currentSlot-1)
+                    wCnt = 0
+        time.sleep(0.7)
+        self.setLight(True)
+        time.sleep(0.7)
+        print("Finished.")
         
+                
         
 g = Grind()
         
